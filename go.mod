@@ -17,4 +17,5 @@ require (
 	golang.org/x/sys v0.0.0-20190624142023-c5567b49c5d0 // indirect
 	golang.org/x/text v0.3.2 // indirect
 	gopkg.in/Acconut/lockfile.v1 v1.1.0 // indirect
+	lukechampine.com/blake3 v1.2.1
 )

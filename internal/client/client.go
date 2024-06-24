@@ -1,14 +1,17 @@
 package client
 
 import (
-  "fmt"
-  "github.com/docopt/docopt-go"
-  "github.com/eventials/go-tus"
-  "github.com/eventials/go-tus/leveldbstore"
-  "github.com/jackhftang/tusc/internal/util"
-  "net/http"
-  "os"
-  "strings"
+	"encoding/base64"
+	"fmt"
+	"github.com/docopt/docopt-go"
+	"github.com/eventials/go-tus"
+	"github.com/eventials/go-tus/leveldbstore"
+	"github.com/jackhftang/tusc/internal/util"
+	"io"
+	"lukechampine.com/blake3"
+	"net/http"
+	"os"
+	"strings"
 )
 
 const clientUsage = `tusc client
@@ -25,83 +28,95 @@ Options:
 `
 
 type ClientConf struct {
-  file   string
-  url    string
-  resume bool
+	file   string
+	url    string
+	resume bool
 }
 
 func Client() {
-  var err error
+	var err error
 
-  var conf ClientConf
-  arguments, _ := docopt.ParseDoc(clientUsage)
-  conf.file, _ = arguments.String("<file>")
-  conf.url, _ = arguments.String("<url>")
-  conf.resume = util.GetBool(arguments, "--resumable")
+	var conf ClientConf
+	arguments, _ := docopt.ParseDoc(clientUsage)
+	conf.file, _ = arguments.String("<file>")
+	conf.url, _ = arguments.String("<url>")
+	conf.resume = util.GetBool(arguments, "--resumable")
 
-  // open file
-  f, err := os.Open(conf.file)
-  if err != nil {
-    util.ExitWithMessages("Cannot open file: " + conf.file)
-  }
-  defer f.Close()
+	// open file
+	f, err := os.Open(conf.file)
+	if err != nil {
+		util.ExitWithMessages("Cannot open file: " + conf.file)
+	}
+	defer f.Close()
 
-  // create the tus client
-  var store tus.Store
-  if conf.resume {
-    path := util.GetString(arguments, "--store")
-    store, err = leveldbstore.NewLeveldbStore(path)
-    if err != nil {
-      util.ExitWithMessages("Cannot Open "+path, clientUsage)
-    }
-  }
+	hasher := blake3.New(64, nil)
+	_, _ = io.Copy(hasher, f)
+	hash := hasher.Sum(nil)[:32]
 
-  // create HTTP header
-  header := make(http.Header)
-  nHdr := arguments["-H"].(int)
-  hdrs := util.GetSliceString(arguments, "<header>")
-  for i := 0; i < nHdr; i += 1 {
-    h := hdrs[i]
-    ix := strings.Index(h, ":")
-    if ix < 0 {
-      continue
-    }
-    hdr := h[0:ix]
-    val := h[ix+1:]
-    fmt.Println(hdr)
-    header.Set(hdr, val)
-  }
+	_, _ = f.Seek(0, io.SeekStart)
 
-  client, _ := tus.NewClient(conf.url, &tus.Config{
-    ChunkSize:           util.GetInt64(arguments, "--chunk-size"),
-    OverridePatchMethod: util.GetBool(arguments, "--override-patch-method"),
-    Resume:              conf.resume,
-    Store:               store,
-    Header:              header,
-    HttpClient:          nil,
-  })
+	// create the tus client
+	var store tus.Store
+	if conf.resume {
+		path := util.GetString(arguments, "--store")
+		store, err = leveldbstore.NewLeveldbStore(path)
+		if err != nil {
+			util.ExitWithMessages("Cannot Open "+path, clientUsage)
+		}
+	}
 
-  // create an upload from a file.
-  var upload *tus.Upload
-  if upload, err = tus.NewUploadFromFile(f); err != nil {
-    util.ExitWithMessages("Cannot create upload from file: " + f.Name())
-  }
+	// create HTTP header
+	header := make(http.Header)
+	nHdr := arguments["-H"].(int)
+	hdrs := util.GetSliceString(arguments, "<header>")
+	for i := 0; i < nHdr; i += 1 {
+		h := hdrs[i]
+		ix := strings.Index(h, ":")
+		if ix < 0 {
+			continue
+		}
+		hdr := h[0:ix]
+		val := h[ix+1:]
+		fmt.Println(hdr)
+		header.Set(hdr, val)
+	}
 
-  // create the uploader.
-  var uploader *tus.Uploader
-  if conf.resume {
-    uploader, err = client.CreateOrResumeUpload(upload)
-  } else {
-    uploader, err = client.CreateUpload(upload)
-  }
-  if err != nil {
-    util.ExitWithMessages("Failed to upload", err.Error())
-  }
+	client, _ := tus.NewClient(conf.url, &tus.Config{
+		ChunkSize:           util.GetInt64(arguments, "--chunk-size"),
+		OverridePatchMethod: util.GetBool(arguments, "--override-patch-method"),
+		Resume:              conf.resume,
+		Store:               store,
+		Header:              header,
+		HttpClient:          nil,
+	})
 
-  fmt.Println(uploader.Url())
+	// create an upload from a file.
+	var upload *tus.Upload
+	if upload, err = tus.NewUploadFromFile(f); err != nil {
+		util.ExitWithMessages("Cannot create upload from file: " + f.Name())
+	}
 
-  // start the uploading process.
-  if err = uploader.Upload(); err != nil {
-    util.ExitWithMessages("Upload incomplete", err.Error())
-  }
+	upload.Metadata["hash"] = base64.RawURLEncoding.EncodeToString(append([]byte{0x1f}, hash...))
+
+	// create the uploader.
+	var uploader *tus.Uploader
+	if conf.resume {
+		uploader, err = client.CreateOrResumeUpload(upload)
+	} else {
+		uploader, err = client.CreateUpload(upload)
+	}
+	if err != nil {
+		if cerr, ok := err.(tus.ClientError); ok {
+			util.ExitWithMessages("Failed to upload", fmt.Sprintf("unexpected status code: %d, body: %s", cerr.Code, string(cerr.Body)))
+		} else {
+			util.ExitWithMessages("Failed to upload", err.Error())
+		}
+	}
+
+	fmt.Println(uploader.Url())
+
+	// start the uploading process.
+	if err = uploader.Upload(); err != nil {
+		util.ExitWithMessages("Upload incomplete", err.Error())
+	}
 }
