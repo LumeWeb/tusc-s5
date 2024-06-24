@@ -1,4 +1,4 @@
-module github.com/jackhftang/tusc
+module github.com/LumeWeb/tusc-s5
 
 go 1.12
 

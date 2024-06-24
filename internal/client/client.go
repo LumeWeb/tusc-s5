@@ -3,10 +3,10 @@ package client
 import (
 	"encoding/base64"
 	"fmt"
+	"github.com/LumeWeb/tusc-s5/internal/util"
 	"github.com/docopt/docopt-go"
 	"github.com/eventials/go-tus"
 	"github.com/eventials/go-tus/leveldbstore"
-	"github.com/jackhftang/tusc/internal/util"
 	"io"
 	"lukechampine.com/blake3"
 	"net/http"

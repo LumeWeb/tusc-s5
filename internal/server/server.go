@@ -2,10 +2,10 @@ package server
 
 import (
 	"fmt"
+	"github.com/LumeWeb/tusc-s5/internal/util"
 	"github.com/bmizerany/pat"
 	"github.com/docopt/docopt-go"
 	"github.com/dustin/go-humanize"
-	"github.com/jackhftang/tusc/internal/util"
 	"github.com/tus/tusd"
 	"github.com/tus/tusd/filestore"
 	"github.com/tus/tusd/limitedstore"

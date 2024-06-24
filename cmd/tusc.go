@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/jackhftang/tusc/internal/client"
-	"github.com/jackhftang/tusc/internal/server"
-	"github.com/jackhftang/tusc/internal/util"
+	"github.com/LumeWeb/tusc-s5/internal/client"
+	"github.com/LumeWeb/tusc-s5/internal/server"
+	"github.com/LumeWeb/tusc-s5/internal/util"
 	"os"
 )
 
